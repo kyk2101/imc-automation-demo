@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>IMC 프로모션 일정 대시보드</title>
+<style>
+  :root {
+    --bg: #f4f6f9;
+    --panel: #ffffff;
+    --border: #e2e6ed;
+    --grid: #eef1f5;
+    --grid-strong: #dde2ea;
+    --text: #2b3340;
+    --muted: #8a93a3;
+    --head: #f8fafc;
+    --bar-group: #1f3a93;
+    --green: #16a34a;
+    --gray: #9aa3af;
+    --red: #ef4444;
+    --today: #f59e0b;
+    --row-h: 34px;
+    --name-w: 250px;
+    --chan-w: 92px;
+    --state-w: 96px;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", "Malgun Gothic", -apple-system, sans-serif;
+    font-size: 13px;
+  }
+  .wrap { max-width: 1320px; margin: 0 auto; padding: 22px 18px 60px; }
+
+  /* ---- Header ---- */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 12px; margin-bottom: 16px;
+  }
+  .title h1 { font-size: 20px; margin: 0 0 2px; font-weight: 700; }
+  .title p { margin: 0; color: var(--muted); font-size: 12px; }
+  .legend { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  .legend .item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); }
+  .dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+  .dot.green { background: var(--green); }
+  .dot.gray  { background: var(--gray); }
+  .dot.red   { background: var(--red); }
+
+  /* ---- Stat cards ---- */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; box-shadow: 0 1px 2px rgba(20,30,50,.04);
+  }
+  .card .k { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+  .card .v { font-size: 26px; font-weight: 700; line-height: 1; }
+  .card .v small { font-size: 13px; font-weight: 500; color: var(--muted); }
+  .card.green .v { color: var(--green); }
+  .card.red .v   { color: var(--red); }
+  .card.gray .v  { color: #6b7280; }
+
+  /* ---- Filters ---- */
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .filters select, .filters input {
+    font: inherit; padding: 6px 10px; border: 1px solid var(--border);
+    border-radius: 7px; background: #fff; color: var(--text);
+  }
+  .chip {
+    border: 1px solid var(--border); background: #fff; border-radius: 20px;
+    padding: 5px 12px; cursor: pointer; font-size: 12px; user-select: none;
+    display: inline-flex; align-items: center; gap: 6px; transition: .12s;
+  }
+  .chip.off { opacity: .4; }
+  .chip:hover { border-color: #c3cad6; }
+
+  /* ---- Gantt ---- */
+  .gantt {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    overflow: auto; max-height: 72vh; box-shadow: 0 1px 3px rgba(20,30,50,.05);
+    position: relative;
+  }
+  .gantt table { border-collapse: collapse; }
+
+  .grow { display: flex; align-items: stretch; height: var(--row-h); }
+  .grow:hover .leftcell { background: #f3f7ff; }
+
+  .leftcell {
+    position: sticky; background: var(--panel); z-index: 3;
+    border-bottom: 1px solid var(--grid); border-right: 1px solid var(--grid);
+    display: flex; align-items: center; padding: 0 10px; flex: 0 0 auto;
+    white-space: nowrap; overflow: hidden;
+  }
+  .c-name  { left: 0;                              width: var(--name-w); font-weight: 500; }
+  .c-chan  { left: var(--name-w);                  width: var(--chan-w); color: var(--muted); font-size: 12px; }
+  .c-state { left: calc(var(--name-w) + var(--chan-w)); width: var(--state-w); border-right: 1px solid var(--grid-strong); gap: 7px; }
+
+  .track { position: relative; flex: 0 0 auto; border-bottom: 1px solid var(--grid); }
+  .track .vgrid { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--grid); }
+  .track .vgrid.month { background: var(--grid-strong); }
+
+  /* group/parent row */
+  .grow.group .leftcell { background: #f7f9fc; font-weight: 700; }
+  .grow.group:hover .leftcell { background: #eef3fb; }
+  .twist { display: inline-block; width: 14px; color: var(--muted); cursor: pointer; transition: transform .12s; font-size: 10px; }
+  .grow.collapsed .twist { transform: rotate(-90deg); }
+  .brandtag { font-size: 11px; color: var(--muted); font-weight: 500; margin-left: auto; }
+
+  /* bars */
+  .bar {
+    position: absolute; top: 7px; height: calc(var(--row-h) - 14px);
+    border-radius: 5px; cursor: default;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.25);
+    display: flex; align-items: center; overflow: hidden;
+  }
+  .bar .label { font-size: 11px; color: #fff; padding: 0 7px; white-space: nowrap; text-shadow: 0 1px 1px rgba(0,0,0,.25); }
+  .bar.green { background: var(--green); }
+  .bar.gray  { background: var(--gray); }
+  .bar.red   { background: var(--red); }
+  .bar.groupbar {
+    background: linear-gradient(180deg, #2a4bb0, #1f3a93);
+    height: 9px; top: calc((var(--row-h) - 9px)/2); border-radius: 4px; opacity: .9;
+  }
+  .bar.groupbar::before, .bar.groupbar::after {
+    content: ""; position: absolute; top: 0; width: 8px; height: 9px; background: #16276b;
+  }
+  .bar.groupbar::before { left: 0; clip-path: polygon(0 0,100% 0,0 100%); }
+  .bar.groupbar::after  { right: 0; clip-path: polygon(100% 0,100% 100%,0 0); }
+
+  /* timeline header */
+  .head-month, .head-week { display: flex; height: 26px; }
+  .head-wrap { position: sticky; top: 0; z-index: 5; background: var(--head); }
+  .corner {
+    position: sticky; left: 0; z-index: 7; background: var(--head);
+    border-right: 1px solid var(--grid-strong); border-bottom: 1px solid var(--grid-strong);
+    display: flex; align-items: flex-end; padding: 4px 10px; font-weight: 700; color: var(--muted); font-size: 12px;
+    flex: 0 0 auto; width: calc(var(--name-w) + var(--chan-w) + var(--state-w));
+  }
+  .mo-cell { border-right: 1px solid var(--grid-strong); border-bottom: 1px solid var(--grid); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; flex: 0 0 auto; }
+  .wk-cell { border-right: 1px solid var(--grid); border-bottom: 1px solid var(--grid-strong); display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--muted); flex: 0 0 auto; }
+  .head-month, .head-week { align-items: stretch; }
+
+  /* today line (lives inside each track, so it scrolls and is hidden behind the sticky left panel) */
+  .today-line { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--today); z-index: 1; pointer-events: none; }
+  .today-flag { position: absolute; top: 0; transform: translateX(-50%); background: var(--today); color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 0 0 5px 5px; z-index: 6; white-space: nowrap; }
+
+  /* tooltip */
+  .tip {
+    position: fixed; z-index: 50; pointer-events: none; background: #1f2937; color: #fff;
+    padding: 9px 11px; border-radius: 8px; font-size: 12px; line-height: 1.5;
+    box-shadow: 0 6px 20px rgba(0,0,0,.25); max-width: 260px; opacity: 0; transition: opacity .1s;
+  }
+  .tip b { font-size: 13px; }
+  .tip .row2 { color: #cbd5e1; }
+  .tip .pill { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; color: #fff; }
+
+  .footnote { color: var(--muted); font-size: 11px; margin-top: 10px; }
+  .empty { padding: 40px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="title">
+      <h1>📊 IMC 프로모션 일정 대시보드</h1>
+      <p>F&amp;F 브랜드 채널별 프로모션 진행 현황 · <span id="updated"></span></p>
+    </div>
+    <div class="legend">
+      <span class="item"><span class="dot green"></span> 진행중</span>
+      <span class="item"><span class="dot red"></span> 예정</span>
+      <span class="item"><span class="dot gray"></span> 종료</span>
+    </div>
+  </div>
+
+  <div class="cards" id="cards"></div>
+
+  <div class="filters" id="filters">
+    <select id="brandSel"><option value="">전체 브랜드</option></select>
+    <select id="chanSel"><option value="">전체 채널</option></select>
+    <input id="search" type="text" placeholder="프로모션 검색…" style="flex:1;min-width:160px;" />
+    <span class="chip" data-st="진행중"><span class="dot green"></span>진행중</span>
+    <span class="chip" data-st="예정"><span class="dot red"></span>예정</span>
+    <span class="chip" data-st="종료"><span class="dot gray"></span>종료</span>
+  </div>
+
+  <div class="gantt" id="gantt"></div>
+  <div class="footnote">
+    ※ 라이브 데이터(<code>data.json</code>)를 자동으로 읽습니다. 파일을 직접 열면 내장된 스냅샷으로 표시됩니다.
+    로컬에서 라이브로 보려면 폴더에서 <code>python -m http.server</code> 실행 후 <code>localhost:8000/dashboard.html</code> 접속.
+  </div>
+</div>
+
+<div class="tip" id="tip"></div>
+
+<script>
+// ---- 내장 스냅샷 (file:// 로 직접 열 때의 폴백) ----
+const EMBEDDED = [
+  {"BRAND":"MLB","CHANNEL":"자사몰","PROMO_NAME":"봄맞이 할인전","START_DATE":"2026-04-15","END_DATE":"2026-05-10","STATUS":"종료"},
+  {"BRAND":"MLB","CHANNEL":"자사몰","PROMO_NAME":"어버이날 기획전","START_DATE":"2026-05-01","END_DATE":"2026-05-15","STATUS":"진행중"},
+  {"BRAND":"MLB","CHANNEL":"무신사","PROMO_NAME":"MLB 신상 발매","START_DATE":"2026-04-20","END_DATE":"2026-05-08","STATUS":"종료"},
+  {"BRAND":"MLB","CHANNEL":"무신사","PROMO_NAME":"스프링 컬렉션","START_DATE":"2026-05-10","END_DATE":"2026-05-25","STATUS":"진행중"},
+  {"BRAND":"MLB","CHANNEL":"SSF샵","PROMO_NAME":"MLB X SSF 단독","START_DATE":"2026-05-05","END_DATE":"2026-05-18","STATUS":"진행중"},
+  {"BRAND":"DISCOVERY","CHANNEL":"자사몰","PROMO_NAME":"가정의달 특가","START_DATE":"2026-05-01","END_DATE":"2026-05-14","STATUS":"진행중"},
+  {"BRAND":"DISCOVERY","CHANNEL":"자사몰","PROMO_NAME":"여름 캠핑 기획전","START_DATE":"2026-05-20","END_DATE":"2026-06-15","STATUS":"예정"},
+  {"BRAND":"DISCOVERY","CHANNEL":"무신사","PROMO_NAME":"디스커버리 봄세일","START_DATE":"2026-04-25","END_DATE":"2026-05-09","STATUS":"종료"},
+  {"BRAND":"DISCOVERY","CHANNEL":"무신사","PROMO_NAME":"썸머 룩북","START_DATE":"2026-05-15","END_DATE":"2026-05-30","STATUS":"진행중"},
+  {"BRAND":"DISCOVERY","CHANNEL":"SSG닷컴","PROMO_NAME":"프리미엄 백팩 단독","START_DATE":"2026-05-01","END_DATE":"2026-05-17","STATUS":"진행중"},
+  {"BRAND":"DUVETICA","CHANNEL":"자사몰","PROMO_NAME":"F/W 프리오더","START_DATE":"2026-04-10","END_DATE":"2026-05-05","STATUS":"종료"},
+  {"BRAND":"DUVETICA","CHANNEL":"자사몰","PROMO_NAME":"스프링 클리어런스","START_DATE":"2026-05-01","END_DATE":"2026-05-20","STATUS":"진행중"},
+  {"BRAND":"STRETCH ANGELS","CHANNEL":"자사몰","PROMO_NAME":"화이트데이 기획전","START_DATE":"2026-03-01","END_DATE":"2026-03-15","STATUS":"종료"},
+  {"BRAND":"STRETCH ANGELS","CHANNEL":"자사몰","PROMO_NAME":"라이트백 출시","START_DATE":"2026-05-10","END_DATE":"2026-05-19","STATUS":"진행중"},
+  {"BRAND":"STRETCH ANGELS","CHANNEL":"29CM","PROMO_NAME":"SA X 29CM 콜라보","START_DATE":"2026-05-12","END_DATE":"2026-05-26","STATUS":"진행중"},
+  {"BRAND":"SUPRA","CHANNEL":"자사몰","PROMO_NAME":"스니커즈 페스타","START_DATE":"2026-04-20","END_DATE":"2026-05-11","STATUS":"종료"},
+  {"BRAND":"SUPRA","CHANNEL":"무신사","PROMO_NAME":"SUPRA 신상","START_DATE":"2026-05-05","END_DATE":"2026-06-05","STATUS":"진행중"},
+  {"BRAND":"TAILORED","CHANNEL":"자사몰","PROMO_NAME":"봄 클래식","START_DATE":"2026-04-15","END_DATE":"2026-05-10","STATUS":"종료"},
+  {"BRAND":"TAILORED","CHANNEL":"SSF샵","PROMO_NAME":"비즈니스 캐주얼","START_DATE":"2026-05-01","END_DATE":"2026-05-20","STATUS":"진행중"}
+];
+
+const PX_PER_DAY = 9;
+const MS = 86400000;
+const STATUS_CLASS = { "진행중":"green", "예정":"red", "종료":"gray" };
+const MONTH_KO = ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
+
+let DATA = [];
+let activeStatus = new Set(["진행중","예정","종료"]);
+const collapsed = new Set();
+
+function parseD(s){ const [y,m,d]=s.split("-").map(Number); return Date.UTC(y,m-1,d); }
+function fmt(ms){ const dt=new Date(ms); return `${dt.getUTCFullYear()}.${String(dt.getUTCMonth()+1).padStart(2,"0")}.${String(dt.getUTCDate()).padStart(2,"0")}`; }
+function days(a,b){ return Math.round((a-b)/MS); }
+function monthStart(ms){ const d=new Date(ms); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1); }
+function monthEnd(ms){ const d=new Date(ms); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth()+1, 0); }
+function addMonth(ms){ const d=new Date(ms); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth()+1, 1); }
+
+async function load(){
+  try{
+    const res = await fetch("data.json", {cache:"no-store"});
+    if(res.ok){ const j = await res.json(); if(Array.isArray(j) && j.length){ DATA = j; render(); return; } }
+  }catch(e){ /* file:// 등 → 폴백 */ }
+  DATA = EMBEDDED;
+  render();
+}
+
+function buildFilters(){
+  const brands=[...new Set(EMBEDDED.concat(DATA).map(d=>d.BRAND))];
+  const chans =[...new Set(EMBEDDED.concat(DATA).map(d=>d.CHANNEL))];
+  const bSel=document.getElementById("brandSel"), cSel=document.getElementById("chanSel");
+  if(bSel.options.length<=1) brands.forEach(b=>bSel.add(new Option(b,b)));
+  if(cSel.options.length<=1) chans.forEach(c=>cSel.add(new Option(c,c)));
+}
+
+function render(){
+  buildFilters();
+  document.getElementById("updated").textContent = "기준일 " + fmt(Date.now());
+
+  // ---- filtering ----
+  const bf=document.getElementById("brandSel").value;
+  const cf=document.getElementById("chanSel").value;
+  const q=document.getElementById("search").value.trim();
+  let rows = DATA.filter(d =>
+    activeStatus.has(d.STATUS) &&
+    (!bf || d.BRAND===bf) &&
+    (!cf || d.CHANNEL===cf) &&
+    (!q  || d.PROMO_NAME.includes(q))
+  );
+
+  renderCards(DATA);
+
+  const gantt=document.getElementById("gantt");
+  if(!rows.length){ gantt.innerHTML='<div class="empty">조건에 맞는 프로모션이 없습니다.</div>'; return; }
+
+  // ---- timeline range ----
+  let minS=Infinity, maxE=-Infinity;
+  rows.forEach(d=>{ minS=Math.min(minS,parseD(d.START_DATE)); maxE=Math.max(maxE,parseD(d.END_DATE)); });
+  const rangeStart = monthStart(minS);
+  const rangeEnd   = monthEnd(maxE);
+  const totalDays  = days(rangeEnd, rangeStart) + 1;
+  const tlW        = totalDays * PX_PER_DAY;
+  const xOf = ms => days(ms, rangeStart) * PX_PER_DAY;
+
+  // ---- group by brand ----
+  const groups={};
+  rows.forEach(d=>{ (groups[d.BRAND] ||= []).push(d); });
+  const brandOrder = Object.keys(groups).sort((a,b)=>{
+    const am=Math.min(...groups[a].map(d=>parseD(d.START_DATE)));
+    const bm=Math.min(...groups[b].map(d=>parseD(d.START_DATE)));
+    return am-bm;
+  });
+
+  // ---- month / week headers ----
+  let moHTML="", wkHTML="";
+  for(let m=rangeStart; m<=rangeEnd; m=addMonth(m)){
+    const mEnd=Math.min(monthEnd(m), rangeEnd);
+    const w = (days(mEnd,m)+1)*PX_PER_DAY;
+    const mo=new Date(m).getUTCMonth();
+    moHTML += `<div class="mo-cell" style="width:${w}px">${MONTH_KO[mo]} ${new Date(m).getUTCFullYear()}</div>`;
+    // weekly ticks (every 7 days from month start)
+    for(let d=m; d<=mEnd; d+=7*MS){
+      const segEnd=Math.min(d+6*MS, mEnd);
+      const ww=(days(segEnd,d)+1)*PX_PER_DAY;
+      wkHTML += `<div class="wk-cell" style="width:${ww}px">${new Date(d).getUTCDate()}</div>`;
+    }
+  }
+
+  // ---- vertical gridlines (per week + month) ----
+  let vgrid="";
+  for(let m=rangeStart; m<=rangeEnd; m=addMonth(m)){
+    vgrid += `<div class="vgrid month" style="left:${xOf(m)}px"></div>`;
+    const mEnd=Math.min(monthEnd(m), rangeEnd);
+    for(let d=m+7*MS; d<=mEnd; d+=7*MS){ vgrid += `<div class="vgrid" style="left:${xOf(d)}px"></div>`; }
+  }
+
+  // ---- today line / flag ----
+  const today = Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+  let todayFlag="";
+  if(today>=rangeStart && today<=rangeEnd){
+    const tx = xOf(today)+PX_PER_DAY/2;
+    vgrid += `<div class="today-line" style="left:${tx}px"></div>`;   // drawn inside every track
+    todayFlag = `<div class="today-flag" style="left:${tx}px">오늘 ${fmt(today)}</div>`;
+  }
+
+  // ---- build rows ----
+  let body = "";
+  brandOrder.forEach(brand=>{
+    const items = groups[brand].slice().sort((a,b)=>parseD(a.START_DATE)-parseD(b.START_DATE));
+    const gMin=Math.min(...items.map(d=>parseD(d.START_DATE)));
+    const gMax=Math.max(...items.map(d=>parseD(d.END_DATE)));
+    const isCol = collapsed.has(brand);
+    const gx=xOf(gMin), gw=(days(gMax,gMin)+1)*PX_PER_DAY;
+
+    body += `<div class="grow group ${isCol?'collapsed':''}" data-brand="${brand}">
+      <div class="leftcell c-name"><span class="twist" data-toggle="${brand}">▼</span>${brand}</div>
+      <div class="leftcell c-chan">${items.length}건</div>
+      <div class="leftcell c-state"><span class="brandtag">${[...new Set(items.map(i=>i.CHANNEL))].length}채널</span></div>
+      <div class="track" style="width:${tlW}px">
+        ${vgrid}
+        <div class="bar groupbar" style="left:${gx}px;width:${gw}px"></div>
+      </div>
+    </div>`;
+
+    if(!isCol){
+      items.forEach(d=>{
+        const cls=STATUS_CLASS[d.STATUS]||"gray";
+        const x=xOf(parseD(d.START_DATE)), w=(days(parseD(d.END_DATE),parseD(d.START_DATE))+1)*PX_PER_DAY;
+        const dur=days(parseD(d.END_DATE),parseD(d.START_DATE))+1;
+        body += `<div class="grow">
+          <div class="leftcell c-name" style="padding-left:30px;font-weight:400">${d.PROMO_NAME}</div>
+          <div class="leftcell c-chan">${d.CHANNEL}</div>
+          <div class="leftcell c-state"><span class="dot ${cls}"></span>${d.STATUS}</div>
+          <div class="track" style="width:${tlW}px">
+            ${vgrid}
+            <div class="bar ${cls}" style="left:${x}px;width:${w}px"
+                 data-tip='${JSON.stringify({n:d.PROMO_NAME,b:brand,c:d.CHANNEL,s:fmt(parseD(d.START_DATE)),e:fmt(parseD(d.END_DATE)),st:d.STATUS,dur,cls})}'>
+              <span class="label">${d.PROMO_NAME}</span>
+            </div>
+          </div>
+        </div>`;
+      });
+    }
+  });
+
+  const headW = `calc(var(--name-w) + var(--chan-w) + var(--state-w))`;
+  gantt.innerHTML = `
+    <div class="head-wrap">
+      <div class="head-month">
+        <div class="corner">항목 / 채널 / 상태</div>
+        <div style="display:flex">${moHTML}</div>
+      </div>
+      <div class="head-week">
+        <div class="corner" style="height:26px;border-bottom:1px solid var(--grid-strong)"></div>
+        <div style="display:flex;position:relative">${wkHTML}${todayFlag}</div>
+      </div>
+    </div>
+    <div style="position:relative">${body}</div>
+  `;
+
+  bindTips();
+  bindToggles();
+}
+
+function renderCards(all){
+  const total=all.length;
+  const cnt=s=>all.filter(d=>d.STATUS===s).length;
+  const brands=new Set(all.map(d=>d.BRAND)).size;
+  const chans=new Set(all.map(d=>d.CHANNEL)).size;
+  document.getElementById("cards").innerHTML = `
+    <div class="card"><div class="k">전체 프로모션</div><div class="v">${total}<small> 건</small></div></div>
+    <div class="card green"><div class="k">진행중</div><div class="v">${cnt("진행중")}<small> 건</small></div></div>
+    <div class="card red"><div class="k">예정</div><div class="v">${cnt("예정")}<small> 건</small></div></div>
+    <div class="card gray"><div class="k">종료</div><div class="v">${cnt("종료")}<small> 건</small></div></div>
+    <div class="card"><div class="k">브랜드 / 채널</div><div class="v">${brands}<small> 브랜드 · ${chans} 채널</small></div></div>
+  `;
+}
+
+function bindToggles(){
+  document.querySelectorAll("[data-toggle]").forEach(el=>{
+    el.onclick = e=>{ e.stopPropagation(); const b=el.dataset.toggle; collapsed.has(b)?collapsed.delete(b):collapsed.add(b); render(); };
+  });
+}
+
+function bindTips(){
+  const tip=document.getElementById("tip");
+  document.querySelectorAll(".bar[data-tip]").forEach(bar=>{
+    bar.addEventListener("mousemove", e=>{
+      const d=JSON.parse(bar.dataset.tip);
+      const colorMap={green:"var(--green)",red:"var(--red)",gray:"var(--gray)"};
+      tip.innerHTML=`<b>${d.n}</b><br>
+        <span class="row2">${d.b} · ${d.c}</span><br>
+        ${d.s} → ${d.e} <span class="row2">(${d.dur}일)</span><br>
+        <span class="pill" style="background:${colorMap[d.cls]}">${d.st}</span>`;
+      tip.style.opacity=1;
+      const ox=e.clientX+14, oy=e.clientY+14;
+      tip.style.left=Math.min(ox, window.innerWidth-tip.offsetWidth-10)+"px";
+      tip.style.top=Math.min(oy, window.innerHeight-tip.offsetHeight-10)+"px";
+    });
+    bar.addEventListener("mouseleave", ()=> tip.style.opacity=0);
+  });
+}
+
+// ---- events ----
+document.getElementById("brandSel").onchange=render;
+document.getElementById("chanSel").onchange=render;
+document.getElementById("search").oninput=render;
+document.querySelectorAll(".chip[data-st]").forEach(c=>{
+  c.onclick=()=>{ const s=c.dataset.st; if(activeStatus.has(s)){activeStatus.delete(s);c.classList.add("off");}else{activeStatus.add(s);c.classList.remove("off");} render(); };
+});
+
+load();
+</script>
+</body>
+</html>
